@@ -1,0 +1,674 @@
+---
+title: "Generowanie i estymacja parametrów dwuwymiarowych rozkładów $\\alpha$-stabilnych oraz wektorów sub-gaussowskich"
+author: "Stanisław Olek"
+date: "today"
+lang: pl
+format:
+  pdf:
+    highlight-style: github
+    fig_caption: yes
+    documentclass: scrartcl
+    papersize: a4
+    toc: true
+    number-sections: true
+    colorlinks: true
+    geometry:
+      - top=25mm
+      - left=25mm
+      - right=25mm
+execute: 
+  echo: false
+  warning: false
+---
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import linregress
+
+```
+
+# Generator dwuwymiarowego rozkładu stabilnego
+W celu wygenerowania próby (wektorów) z dwuwymiarowego rozkładu stabilnego dla zadanej dyskretnej miary spektralnej oraz parametru $\alpha$ (rozkład $\mathbf{S}(\alpha, \beta=1, \gamma=1, \delta=0)$) zdefiniujmy generator: 
+
+```{python}
+#| echo: true
+def stable_generator(alpha, beta, gamma, delta):
+    theta = np.random.uniform(-np.pi/2, np.pi/2, size=1)
+    w = np.random.exponential(scale=1, size=1)
+    if alpha != 1:
+        theta_0 = np.arctan(beta * np.tan(np.pi * alpha / 2)) / alpha
+        p1 = ((np.sin(alpha*(theta_0 + theta))) /
+         ((np.cos(theta_0 * alpha)) * (np.cos(theta)))**(1/alpha))
+        p2 = ((np.cos(alpha * theta_0 + (alpha - 1) * theta)) / w)**((1-alpha)/alpha)
+        return gamma * p1 * p2 + delta
+    else:
+        p1 = (2/np.pi * (np.pi/2 + beta * theta) * np.tan(theta) - 
+        beta * np.log(np.pi/2 * w * np.cos(theta) / (np.pi/2 + beta * theta)))
+        return gamma * p1 + (delta + beta * gamma * 2/np.pi * gamma * np.log(gamma))
+
+def stable_twodim(s, gamma, n, alfa):
+    Z = np.array([stable_generator(alpha=alfa, beta=1,
+     gamma=1, delta=0) for _ in range(n)]).flatten()
+    
+    if alfa != 1:
+        weights = (gamma**(1/alfa)) * Z
+    else:
+        weights = (gamma**(1/alfa)) * (Z + 2/np.pi * np.log(gamma))
+    
+    x_vector = np.sum(weights[:, np.newaxis] * s, axis=0)
+    return x_vector
+
+def generate_twodim_samples(s, gamma, n, alfa, num_samples=1000):
+    samples = []
+    for _ in range(num_samples):
+        samples.append(stable_twodim(s, gamma, n, alfa))
+    return np.array(samples)
+```
+
+Wygenerujemy 3 próby (długośći 1000) dla 3 różnych miar spektralnych i parametru $\alpha=1.2$:
+
+* symetryczny wektor stabilny, to znaczy taki, dla którego miara spektralna jest symetryczna względem początku układu współrzędnych; weźmy więc miarę spektralną w następujących 4 punktach: $(\sqrt{2}/2, \sqrt{2}/2)$, $(-\sqrt{2}/2, \sqrt{2}/2)$, $(-\sqrt{2}/2, -\sqrt{2}/2)$ i $(\sqrt{2}/2, -\sqrt{2}/2)$ z wagami $0.25$ dla każdego z nich
+* wektor stabilny o niezależnych składowych, to znaczy taki, dla którego miara spektralna jest dyskretna i skoncentrowana na osiach układu współrzędnych; weźmy więc miarę spektralną w następujących 4 punktach: $(1, 0)$, $(0, 1)$, $(-1, 0)$ i $(0, -1)$ z wagami $0.4$, $0.1$, $0.2$ i $0.3$ odpowiednio
+* wektor stabilny, który nie jest symetryczny i nie ma niezależnych składowych, to znaczy taki, dla którego miara spektralna nie jest symetryczna względem początku układu współrzędnych i nie jest skoncentrowana na osiach układu współrzędnych; weźmy więc miarę spektralną w następujących 3 punktach $(1, 0)$, $(\sqrt{2}/2, \sqrt{2}/2)$ i $(0, 1)$ z wagami $0.2$, $0.6$ i $0.2$ odpowiednio
+
+```{python}
+#| label: fig-dwuwymiarowe-stabilne
+#| fig-cap: "Próby z dwuwymiarowego rozkładu stabilnego dla zadanych miar spektralnych i parametru $\\alpha=1.2$"
+#| fig-subcap: 
+#|   - "symetryczny wektor stabilny"
+#|   - "wektor o niezależnych składowych"
+#|   - "niesymetryczny i o nie niezależnych składowych"
+#| layout-ncol: 3
+#| fig-height: 5
+#| fig-width: 5
+
+# a) symetryczny wektor stabilny
+s1 = np.array([
+    [np.sqrt(2)/2, np.sqrt(2)/2], 
+    [-np.sqrt(2)/2, np.sqrt(2)/2], 
+    [-np.sqrt(2)/2, -np.sqrt(2)/2], 
+    [np.sqrt(2)/2, -np.sqrt(2)/2]
+])
+gamma1 = np.array([0.25, 0.25, 0.25, 0.25])
+
+# b) wektor o niezależnych składowych
+s2 = np.array([
+    [1, 0], 
+    [0, 1], 
+    [-1, 0], 
+    [0, -1]
+])
+gamma2 = np.array([0.4, 0.1, 0.2, 0.3])
+
+# c) niesymetryczny i nie o niezależnych składowych
+s3 = np.array([
+    [1, 0], 
+    [np.sqrt(2)/2, np.sqrt(2)/2], 
+    [0, 1]
+])
+gamma3 = np.array([0.2, 0.6, 0.2])
+
+samples1 = generate_twodim_samples(s=s1, gamma=gamma1, n=len(s1), alfa=1.2, num_samples=1000)
+samples2 = generate_twodim_samples(s=s2, gamma=gamma2, n=len(s2), alfa=1.2, num_samples=1000)
+samples3 = generate_twodim_samples(s=s3, gamma=gamma3, n=len(s3), alfa=1.2, num_samples=1000)
+
+plt.figure(figsize=(5, 5))
+plt.scatter(samples1[:, 0], samples1[:, 1], alpha=0.5, s=10)
+plt.xlabel("$x_1$")
+plt.ylabel("$x_2$")
+plt.grid(True)
+plt.axis("equal");
+plt.show()
+
+plt.figure(figsize=(5, 5))
+plt.scatter(samples2[:, 0], samples2[:, 1], alpha=0.5, s=10)
+plt.xlabel("$x_1$")
+plt.ylabel("$x_2$")
+plt.grid(True)
+plt.axis("equal");
+plt.show()
+
+plt.figure(figsize=(5, 5))
+plt.scatter(samples3[:, 0], samples3[:, 1], alpha=0.5, s=10)
+plt.xlabel("$x_1$")
+plt.ylabel("$x_2$")
+plt.grid(True)
+plt.axis("equal");
+plt.show()
+```
+
+Analizując wygenerowane próby (@fig-dwuwymiarowe-stabilne), można zaobserwować wpływ dyskretnej miary spektralnej na zachowanie dwuwymiarowego wektora stabilnego. We wszystkich trzech przypadkach, ze względu na parametr $\alpha = 1.2 < 2$, dostrzegalne są grube ogony rozkładu poprzez skrajnie oddalone pojedyncze obserwacje. Dla symetrycznego wektora stabilnego (@fig-dwuwymiarowe-stabilne (a)) wartości odstające rozchodzą się we wszystkich czterech kierunkach wyznaczonych przez punkty miary spektralnej. W przypadku wektora o niezależnych składowych (@fig-dwuwymiarowe-stabilne (b)) punkty skupiają się wyłącznie na głównych osiach $x_1$ i $x_2$, co potwierdza brak zależności między zmiennymi. Natomiast w trzecim wariancie (@fig-dwuwymiarowe-stabilne (c)) wprowadzenie niesymetrycznej miary spektralnej skutkuje brakiem niezależności oraz tym, że wartości ekstremalne są widoczne tylko w określonych kierunkach (w naszym przypadku są skupione głównie w pierwszej ćwiartce).
+
+
+# Generator dwuwymiarowego wektora losowego sub-gaussowskiego
+W celu wygenerowania próby dwuwymiarowych wektorów losowych sub-gaussowskich, zdefiniujmy generator dla zadanego parametru $\alpha$:
+
+```{python}
+#| echo: true
+def subgaussian_twodim(alfa):
+    A = stable_generator(alpha=alfa/2, beta=1,
+     delta=0, gamma=(np.cos((np.pi*alfa)/4))**(2/alfa))
+    G = np.random.normal(0, 1, size=2)
+    X = A**(1/2) * G
+    return X
+
+def generate_subgaussian_samples(alfa, num_samples=1000):
+    samples = []
+    for _ in range(num_samples):
+        samples.append(subgaussian_twodim(alfa))
+    return samples
+```
+
+Wygenerujmy próbę (długości 1000) z dwuwymiarowego rozkładu sub-gaussowskiego dla zadanego parametru $\alpha=1.2$
+
+```{python}
+#| label: fig-subgaussian
+#| fig-cap: "Próba z dwuwymiarowego rozkładu sub-gaussowskiego dla zadanego parametru $\\alpha=1.2$"
+#| fig-pos: "H"
+#| fig-height: 3
+#| fig-width: 4
+alfa = 1.2
+sample_subgaussian = generate_subgaussian_samples(alfa=alfa, num_samples=1000)
+sample_subgaussian = np.array(sample_subgaussian)
+
+plt.figure(figsize=(4, 3))
+plt.scatter(sample_subgaussian[:, 0], sample_subgaussian[:, 1], alpha=0.5, s=10)
+plt.title("Wektory sub-gaussowskie")
+plt.xlabel("$x_1$")
+plt.ylabel("$x_2$")
+plt.grid(True)
+plt.show()
+```
+
+Jak możemy zauważyć (@fig-subgaussian), mimo że większość wygenerowanych punktów jest skoncentrowana wokół 0, na wykresie widać pojedyncze skrajnie oddalone obserwacje, co jest charakterystyczne dla rozkładów stabilnych dla parametru $\alpha < 2$ (własność grubych ogonów).
+
+# Estymacja miary spektralnej $\Gamma$ oraz parametru $\alpha$
+
+W celu estymowania miary spektralenj $\Gamma$ skorzystamy z estymatorów:
+
+```{python}
+#| echo: true
+def estymujGamma(probka, fi1 = 0.0, fi2 = np.pi/2, R = 0.9):
+
+    probkaX = probka[:, 0]
+    probkaY = probka[:, 1]
+
+    promienie = np.sqrt(probkaX ** 2 + probkaY ** 2)
+    katy = np.atan2(probkaY, probkaX)
+
+    indeks = int(np.size(promienie) * R)
+    odciecie = np.sort(promienie)
+    odciecie = odciecie[indeks]
+
+    maska_promienie = promienie >= odciecie
+    maska_katy = (katy >= fi1) & (katy <= fi2)
+
+    gora = np.sum(maska_katy & maska_promienie)
+    dol = np.sum(maska_promienie)
+
+    return(gora/dol)
+```
+
+Estymator $\Gamma$ opiera się na prostym zliczaniu kątów ekstremalnych obserwacji w zadanym stożku, co daje intuicyjną, geometryczną interpretację miary spektralnej jako rozkładu kierunków największych wartosci. 
+natomiast do estymatora parametru $\alpha$ mamy:
+
+```{python}
+#| echo: true
+def estymujAlpha(probka, R = 0.8):
+
+    probkaX = probka[:, 0]
+    probkaY = probka[:, 1]
+
+    promienie = np.sqrt(probkaX ** 2 + probkaY ** 2)
+    promienie_sorted = np.sort(promienie)
+
+    indeks = int(np.size(promienie) * R)
+    ogon = promienie_sorted[indeks :]
+
+    empiriczny_ogon = np.array([(promienie.size - (indeks + j)) /
+     promienie.size for j in range(len(ogon))])
+
+    log_ogon = np.log(ogon)
+    log_ogon_empiryczny = np.log(empiriczny_ogon)
+
+    regresja = linregress(log_ogon, log_ogon_empiryczny)
+
+    alpha_h = -regresja.slope
+
+    return(alpha_h)
+
+```
+Estymator $\alpha$ wykorzstuje najdalszą część próby i dopasowanie prostej w skali $\log$ - $\log$ dzięki czemu doprze wychwytuje potęgową naturę ogona rozkładu stabilnego.
+
+Estymacja $\alpha$ dla trzech próbek:
+```{python}
+alpha_hat_1 = estymujAlpha(samples1, R=0.8)
+alpha_hat_2 = estymujAlpha(samples2, R=0.8)
+alpha_hat_3 = estymujAlpha(samples3, R=0.8)
+```
+```{python}
+#| echo: false
+print("alpha (teoretyczne) = 1.2")
+print("alpha^_1 (symetryczny) =", alpha_hat_1)
+print("alpha^_2 (niezależne składowe) =", alpha_hat_2)
+print("alpha^_3 (niesymetryczny, zależny) =", alpha_hat_3)
+```
+
+Następnie estymujemy $\Gamma$ tylko dla pierwszej ćwiartki $(0, \frac{\pi}{2})$:
+
+```{python}
+gamma_q1_1 = estymujGamma(samples1, fi1=0.0, fi2=np.pi/2, R=0.8)
+gamma_q1_2 = estymujGamma(samples2, fi1=0.0, fi2=np.pi/2, R=0.8)
+gamma_q1_3 = estymujGamma(samples3, fi1=0.0, fi2=np.pi/2, R=0.8)
+```
+
+```{python}
+#| echo: false
+print("Szacowana masa miary spektralnej w pierwszej ćwiartce (0, pi/2):")
+print("symetryczny: ", gamma_q1_1)
+print("niezależne składowe: ", gamma_q1_2)
+print("niesymetryczny, zależny: ", gamma_q1_3)
+```
+Dla wszystkich trzech prób estmowane wyniki $\alpha$ są bliskie wartości teoretycznej $1.2$ co potwierdza, że ogon rozkładu promieni został poprawnie odtworzony przez symulacje oraz że estmator opary na regresji $\log$-$\log$ zachowuje się stabilnie przy użytym promieniu $R$. 
+
+
+
+# Estymacja funkcji charakterystycznej dla danych dwuwymiarowych
+Mając do dyspozycji próbę danych $X^{(1)}, \ldots, X^{(n)}$, gdzie $X^{(i)} = (X_{1}^{(i)}, X_{2}^{(i)})$, można estymować funkcję charakterystyczną za pomocą następującego estymatora:
+
+$\hat{\phi}(t) = \frac{1}{n} \sum_{i=1}^{n} e^{i(t_1 X_{1}^{(i)} + t_2 X_{2}^{(i)})}$, gdzie $t = (t_1, t_2)$ jest dowolnym wektorem w $\mathbb{R}^2$. 
+
+Estymator ten można rozłożyć na część rzeczywistą i urojoną:
+
+$\text{Re}(\hat{\phi}(t)) = \frac{1}{n} \sum_{i=1}^{n} \cos(t_1 X_{1}^{(i)} + t_2 X_{2}^{(i)})$
+
+$\text{Im}(\hat{\phi}(t)) = \frac{1}{n} \sum_{i=1}^{n} \sin(t_1 X_{1}^{(i)} + t_2 X_{2}^{(i)})$
+
+Zaimplementujmy więc funkcję, która oblicza estymator funkcji charakterystycznej dla danej próby i punktu $t$:
+
+```{python}
+#| echo: true
+def estimator_cf(sample, t):
+    n = sample.shape[0]
+    
+    sum_re = 0.0
+    sum_im = 0.0
+    
+    t1 = t[0]
+    t2 = t[1]
+    
+    for k in range(n):
+        x1 = sample[k, 0]
+        x2 = sample[k, 1]
+        
+        dot_prod = (t1 * x1) + (t2 * x2)
+        sum_re += np.cos(dot_prod)
+        sum_im += np.sin(dot_prod)
+        
+    est_re = sum_re / n
+    est_im = sum_im / n
+    
+    return est_re, est_im
+```
+
+```{python}
+t_range = np.linspace(-2, 2, 50)
+t1, t2 = np.meshgrid(t_range, t_range)
+
+size = t1.shape[0]
+est_re_grid = np.zeros((size, size))
+est_im_grid = np.zeros((size, size))
+
+for i in range(size):
+    for j in range(size):
+        t = [t1[i, j], t2[i, j]] 
+        re, im = estimator_cf(sample_subgaussian, t)
+        
+        est_re_grid[i, j] = re
+        est_im_grid[i, j] = im
+```
+
+```{python}
+#| label: fig-cf-estimation
+#| fig-cap: "Estymacja funkcji charakterystycznej dla próby wektorów sub-gaussowskich z zadania 2 oraz porównanie jej z teoretyczną funkcją charakterystyczną"
+#| fig-subcap: 
+#|   - "Część rzeczywista i urojona estymatora funkcji charakterystycznej"
+#|   - "Teoretyczna funkcja charakterystyczna i całkowity błąd estymacji"
+#| layout-ncol: 1
+#| fig-height: 4
+#| fig-width: 10
+#| fig-pos: "H"
+t_mod = np.sqrt(t1**2 + t2**2)
+theo_cf = np.exp(-(2**(-alfa/2)) * t_mod**alfa)
+error_est = np.sqrt((est_re_grid - theo_cf)**2 + est_im_grid**2)
+
+fig_a, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+
+cp1 = ax1.contourf(t1, t2, est_re_grid, levels=20, cmap="viridis")
+fig_a.colorbar(cp1, ax=ax1);
+ax1.set_title("Estymowana część rzeczywista")
+ax1.set_xlabel("$t_1$")
+ax1.set_ylabel("$t_2$")
+
+cp2 = ax2.contourf(t1, t2, est_im_grid, levels=20, cmap="RdBu")
+fig_a.colorbar(cp2, ax=ax2);
+ax2.set_title("Estymowana część urojona")
+ax2.set_xlabel("$t_1$")
+ax2.set_ylabel("$t_2$")
+
+plt.tight_layout()
+plt.show()
+
+
+fig_b, (ax3, ax4) = plt.subplots(1, 2, figsize=(10, 4))
+cp3 = ax3.contourf(t1, t2, theo_cf, levels=20, cmap="viridis")
+fig_b.colorbar(cp3, ax=ax3);
+ax3.set_title("Teoretyczna funkcja charakterystyczna")
+ax3.set_xlabel("$t_1$")
+ax3.set_ylabel("$t_2$")
+
+cp4 = ax4.contourf(t1, t2, error_est, levels=20, cmap="Reds") 
+fig_b.colorbar(cp4, ax=ax4);
+ax4.set_title("Błąd estymacji (moduł)")
+ax4.set_xlabel("$t_1$")
+ax4.set_ylabel("$t_2$")
+
+plt.tight_layout()
+plt.show()
+```
+
+Teoretyczna funkcja charakterystyczna, dana wzorem $\phi(t) = \exp{(-2^{-(\alpha/2)} |t|^{\alpha})}$, gdzie $|t|=\sqrt{t_1^2 + t_2^2}$, jest czysto rzeczywista (tj. $\text{Im}(\phi(t)) = 0$). Potwierdza to wykres estymowanej części urojonej (@fig-cf-estimation (a)), która jest bliska 0. Moduł błędu estymacji (@fig-cf-estimation (b)) przyjmuje bardzo małe wartości, co oznacza, że estymator $\hat{\phi}(t)$ jest zbieżny z wynikiem teoretycznym i potwierdza poprawność generatora wektora sub-gaussowskiego z zadania 2.
+
+# Estymacja miary kodiferencji $\tau$
+
+W celu estymacji miary kodiferencji $\tau(X_1,X_2)$ korzystamy z definicji estymatora podanego na ćwiczeniach. Zamimplementowana funkcja przyjmuje jednowymiarowe próbki $X$, $Y$ i zwraca oszacowanie $\tau(X,Y)$.
+
+```{python}
+#| echo: true
+def codif(X, Y):
+
+    if np.size(X) != np.size(Y):
+        raise ValueError
+    else:
+        n = np.size(X)
+    
+    p1 = np.log(1/n * np.real(np.sum( np.exp(1j*(X - Y)))))
+    p2 = np.log(1/n * np.real(np.sum( np.exp(1j*X))))
+    p3 = np.log(1/n * np.real(np.sum( np.exp(-1j*Y))))
+
+    return(p1 - p2 - p3)
+
+def codif_from_sample(sample):
+
+    X = sample[:, 0]
+    Y = sample[:, 1]
+
+    return codif(X, Y)
+```
+```{python}
+codif_1 = codif_from_sample(samples1)
+codif_2 = codif_from_sample(samples2)
+codif_3 = codif_from_sample(samples3)
+```
+
+```{python}
+# dodatkowe probki
+samples1_alpha15 = generate_twodim_samples(s=s1, gamma=gamma1, n=len(s1), alfa=1.5, num_samples=1000)
+
+codif_4 = codif_from_sample(samples1_alpha15)
+
+s4 = np.array([
+    [1, 0],
+    [np.sqrt(2)/2, np.sqrt(2)/2],
+    [0, 1]
+])
+gamma4 = np.array([0.1, 0.8, 0.1])
+
+samples5 = generate_twodim_samples(s=s4, gamma=gamma4, n=len(s4), alfa=1.2, num_samples=1000)
+
+codif_5 = codif_from_sample(samples5)
+
+samples1_alpha05 = generate_twodim_samples(s=s1, gamma=gamma1, n=len(s1), alfa=0.5, num_samples=1000)
+
+codif_6 = codif_from_sample(samples1_alpha05)
+```
+
+Wyniki konkretnych estymacji Kodyferencji:
+```{python}
+#| echo: false
+print("Kodiferencja (symetryczny) = ", codif_1)
+print("Kodiferencja (niezależne składowe) = ", codif_2)
+print("Kodiferencja (niesymetryczny) = ", codif_3)
+print("Kodiferencja (alpha = 1.5) =", codif_4)
+# print("Kodiferencja (niesymetryczny, nowa Gamma) = ", codif_5)
+print("Kodiferencja (alpha = 0.5) = ", codif_6)
+```
+
+Zauważmy, że dla przykładu z wektorem o niezależnych składowych estymowana kodiferencja nie jest równa zeru co prawdopodpobnie jest spowodowoane kostrukją generatora.
+Zwrócmy też uwagę, że przy niesymetrycznych miarach spektralnych estymator kodiferencji czasem zwraca NaN, co może wynikać z logarytmowania bardzo małych wartości i błędów numerycznych. 
+Dodatkowo widać, że zmiana paramatru $\alpha$ na $0.5$ lub $1.5$ istotnie wypływa na wartość kodiferencji, co pokazuje, że mierzy ona nie tylko zależność między składowymi, ale także wrażliwość na grubość ogonów rozkładu.
+
+# Wyznaczanie optymalnego wyboru parametru R w estymatorze miary spektralnej
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(fig.pos = "H", out.extra = "", fig.align = "center")
+set.seed(67)
+library(stabledist)
+```
+
+
+Rozważmy problem wyznaczenia optymalnego wyboru parametru $R$ w estymatorze miary spektralnej. W tym celu będzie nam potrzebny generator liczb o zadanej wartości $\alpha \in (0,2]$ i mierze spektralnej $\Gamma$ oraz estymator miary spektralnej $\hat{\Gamma}$.
+
+```{r}
+#| echo: true
+# generator
+rstable2d <- function(n, alpha, gamma_wagi, gamma_kierunki) {
+  if (alpha <= 0 || alpha > 2) 
+    stop("Parametr 'alpha' musi być w przedziale (0,2].")
+  if (abs(sum(gamma_wagi) - 1) > 1e-6) 
+    warning("Wagi w 'gamma_wagi' nie sumują się do 1.")
+  m <- length(gamma_wagi)
+  
+  S <- matrix(NA, nrow = n, ncol = m)
+  for (j in 1:m) {
+    S[, j] <- rstable(n, alpha = alpha, beta = 0, gamma = 1, delta = 0)
+  }
+  
+  wagi_skalowane <- gamma_wagi^(1/alpha)
+  
+  X <- matrix(0, nrow = n, ncol = 2)
+  for (j in 1:m) {
+    cos_theta <- cos(gamma_kierunki[j])
+    sin_theta <- sin(gamma_kierunki[j])
+    X[, 1] <- X[, 1] + wagi_skalowane[j] * S[, j] * cos_theta
+    X[, 2] <- X[, 2] + wagi_skalowane[j] * S[, j] * sin_theta
+  }
+  return(X)
+}
+
+# estymator
+est_gamma <- function(dane, R) {
+  odleglosci <- sqrt(dane[,1]^2 + dane[,2]^2)
+  kierunki <- atan2(dane[,2], dane[,1])
+  maska_ogon <- odleglosci > R
+  N <- sum(maska_ogon)
+  if (N == 0) return(rep(0, 36))
+  kierunki_ogon <- kierunki[maska_ogon]
+  K <- 36
+  granice <- seq(-pi, pi, length.out = K + 1)
+  gamma <- rep(0, K)
+  for (i in 1:K) {
+    w_przedziale <- kierunki_ogon >= granice[i] & kierunki_ogon < granice[i+1]
+    gamma[i] <- sum(w_przedziale) / N
+  }
+  return(gamma)
+}
+```
+
+Funkcja \textit{rstable2d} generuje $n$ 2-wymiarowych wektorów o zadanym indeksie stabilności $\alpha$ i mierze spektralnej $\Gamma$. Funkcja \textit{est}\_\textit{gamma} dla danych wejściowych oraz wartości $R$, wylicza kierunek dla każdej danej, dzieli kąt pełny na 36 równych części, zlicza jaka część obserwacji z danych zawiera się w poszczególnych częściach kątu pełnego i przypisuje tym częściom poszczególne masy.\
+Pomysł na wyznaczenie optymalnego $R$ jest taki, aby porównać estymator miary spektralnej $\hat{\Gamma}$ z rzeczywistą miarą spektralną $\Gamma$ na podstawie błędu średniokwadratowego. Wartość $R$ o najmniejszym błędzie, będzie przyjętą przez nas optymalną wartością $R$. W tym celu musimy sprowadzić miarę spektralną do podobnej postaci jaką ma estymator.
+
+```{r}
+#| echo: true
+#przeróbka by móc porównywać estymator z miarą spektralną
+prawdziwa_gamma <- function(gamma_kierunki, gamma_wagi, granice) {
+  K <- length(granice) - 1
+  gamma_true <- rep(0, K)
+  
+  for (i in 1:K) {
+    for (j in seq_along(gamma_kierunki)) {
+      kat <- gamma_kierunki[j]
+      kat <- ((kat + pi) %% (2*pi)) - pi
+      
+      if (kat >= granice[i] - 1e-10 && kat < granice[i+1] - 1e-10) {
+        gamma_true[i] <- gamma_true[i] + gamma_wagi[j]
+      }
+    }
+  }
+  
+  for (j in seq_along(gamma_kierunki)) {
+    kat <- gamma_kierunki[j]
+    kat <- ((kat + pi) %% (2*pi)) - pi
+    if (abs(kat - pi) < 1e-10 || abs(kat + pi) < 1e-10) {
+      gamma_true[K] <- gamma_true[K] + gamma_wagi[j]
+    }
+  }
+  
+  gamma_true <- gamma_true / sum(gamma_true)
+  return(gamma_true)
+}
+```
+
+Funkcja \textit{prawdziwa}\_\textit{gamma} pełni taką rolę, mianowicie dla ustalonych mas i kierunków, które są ustalone dla miary spektralnej $\Gamma$ oraz końców przedziałów podziału kąta pełnego, funkcja \textit{prawdziwa}\_\textit{gamma} przypisuje przedziałom poszczególne masy dające się porównać z estymatorem.
+
+```{r}
+#| echo: true
+# wybór optymalnego R
+wybierz_R <- function(dane, gamma_kierunki, gamma_wagi, 
+                      kwantyle = seq(0.01, 0.99, by = 0.01)) {
+  
+  odleglosci <- sqrt(dane[,1]^2 + dane[,2]^2)
+  progi_R <- quantile(odleglosci, kwantyle)
+  
+  K <- 36
+  granice <- seq(-pi, pi, length.out = K + 1)
+  gamma_true <- prawdziwa_gamma(gamma_kierunki, gamma_wagi, granice)
+  
+  bledy <- c()
+  for (i in seq_along(progi_R)) {
+    gamma_est <- est_gamma(dane, progi_R[i])
+    if (sum(gamma_est) == 0) {
+      bledy <- c(bledy, Inf)
+    } else {
+      mse <- mean((gamma_est - gamma_true)^2)
+      bledy <- c(bledy, mse)
+    }
+  }
+  
+  idx <- which.min(bledy)
+  return(progi_R[idx])
+}
+```
+
+Funkcja \textit{wybierz}\_\textit{R} dla danych wejściowych oraz miary spektralej $\Gamma$, z której wygenerowane zostały dane wybiera wartość $R^{*}$, dla której błąd średniokwadratowy jest najmniejszy. Jako kandydaci na $R$ zostały rozpatrzyliśmy kwantyle próby, wybrane na zasadzie odległości od $0$.\
+Sprawdźmy zależność wyboru $R^{*}$ od $\alpha$ oraz miary spektralnej $\Gamma$. W tym celu będziemy $m = 50$ razy generować próby rozmiaru $n = 10000$ o mierze spektralnej $\Gamma_{1}$ przypisującej wagę $\gamma_{1} = 0.7$ punktowi $\textbf{s}_{1} = (1,0)$ oraz wagę $\gamma_{2} = 0.3$ punktowi $\textbf{s}_{2} = (0,1)$, dla $\alpha \in \{0.7, 0.8, 0.9, \dots, 1.9\}$. Dla wybranej wartości $\alpha$, za $R^{*}$ przyjmiemy średnią $R$ z $m$ symulacji, a wszystko zwizualizujemy na wykresie.
+
+```{r echo = FALSE}
+n <- 10000
+alpha <- 0.6
+n_sym <- 50
+```
+
+```{r echo = FALSE}
+gamma_wagi1 <- c(0.7, 0.3)
+gamma_kierunki1 <- c(0, pi/2)
+```
+
+```{r wykresiwo1, dev = "png", echo = FALSE, eval = TRUE, fig.cap = "\\label{fig:wykresiwo1}Optymalne R w zależności od alpha"}
+alphy <- seq(0.7,1.9,0.1)
+R_alphy <- c()
+for(j in alphy){
+  lista_R <- c()
+  for (i in 1:n_sym) {
+    dane <- rstable2d(n, j, gamma_wagi1, gamma_kierunki1)
+    R_opt <- wybierz_R(dane, gamma_kierunki1, gamma_wagi1)
+    lista_R <- c(lista_R, R_opt)
+  }
+  R_alphy <- c(R_alphy,mean(lista_R))
+}
+plot(alphy,R_alphy,type="b",xlab="alpha",ylab="Optymalne R",col="blue3")
+```
+
+na podstawie wyresu \ref{fig:wykresiwo1}, widzimy że $R^{*}$ maleje wraz ze wzrostem alpha. Sprawdźmy teraz zależność od wyboru miary, w tym celu wybierzemy trzy miary:
+
+\begin{itemize}
+\item
+$\Gamma_{1}$ przypisująca wagę $\gamma_{1} = 0.7$ punktowi $\textbf{s}_{1} = (1,0)$ oraz wagę $\gamma_{2} = 0.3$ punktowi $\textbf{s}_{2} = (0,1)$
+\item
+$\Gamma_{2}$ przypisująca wagę $\gamma = 0.25$ do każdego z punktów: $\textbf{s}_{1} = (\sqrt{2}/2,\sqrt{2}/2), \textbf{s}_{2} = (-\sqrt{2}/2,\sqrt{2}/2), \textbf{s}_{3} = (-\sqrt{2}/2,-\sqrt{2}/2), \textbf{s}_{4} = (\sqrt{2}/2,-\sqrt{2}/2)$
+\item
+$\Gamma_{3}$ przypisująca: wagę $\gamma_{1} = 0.3$ punktowi $\textbf{s}_{1} = (1,0)$, wagę $\gamma_{2} = 0.4$ punktowi $\textbf{s}_{2} = (1/2,\sqrt{3}/2)$ oraz wagę $\gamma_{3} = 0.3$ punktowi $\textbf{s}_{1} = (\sqrt{3},-1/2)$.
+\item
+$\Gamma_{4}$ przypisująca wagę $\gamma = 0.5$ punktom $\textbf{s}_{1} = (0,1)$ oraz $\textbf{s}_{2} = (0,-1)$
+\end{itemize}
+
+Następnie dla ustalonej wartości $\alpha_{symulacja} = 0.8$ zasymulujemy $m_{1} = 100$ - krotnie, próbę rozmiaru $n = 10000$ dla wybranych miar spektralnych oraz użyjemy funkcji \textit{wybierz}\_\textit{R} do wyboru $R^{*}$.
+
+```{r echo = FALSE}
+gamma_wagi2 <- c(0.25, 0.25, 0.25, 0.25)
+gamma_kierunki2 <- c(pi/4, 3*pi/4, 5*pi/4, 7*pi/4)
+
+gamma_wagi3 <- c(0.3, 0.4, 0.3)
+gamma_kierunki3 <- c(0, pi/3, -pi/6)
+
+gamma_wagi4 <- c(0.5, 0.5)
+gamma_kierunki4 <- c(pi/2, 3*pi/2)
+
+n_sym1 <- 100
+```
+
+```{r echo = FALSE}
+#Gamma 1
+wszystkie_R1 <- c()
+for (i in 1:n_sym1) {
+  dane <- rstable2d(n, alpha, gamma_wagi1, gamma_kierunki1)
+  R_opt <- wybierz_R(dane, gamma_kierunki1, gamma_wagi1)
+  wszystkie_R1 <- c(wszystkie_R1, R_opt)
+}
+R1 <- mean(wszystkie_R1)
+  
+#Gamma 2
+wszystkie_R2 <- c()
+for (i in 1:n_sym1) {
+  dane <- rstable2d(n, alpha, gamma_wagi2, gamma_kierunki2)
+  R_opt <- wybierz_R(dane, gamma_kierunki2, gamma_wagi2)
+  wszystkie_R2 <- c(wszystkie_R2, R_opt)
+}
+R2 <- mean(wszystkie_R2)
+  
+#Gamma 3
+wszystkie_R3 <- c()
+for (i in 1:n_sym1) {
+  dane <- rstable2d(n, alpha, gamma_wagi3, gamma_kierunki3)
+  R_opt <- wybierz_R(dane, gamma_kierunki3, gamma_wagi3)
+  wszystkie_R3 <- c(wszystkie_R3, R_opt)
+}
+R3 <- mean(wszystkie_R3)
+
+#Gamma 4
+wszystkie_R4 <- c()
+for (i in 1:n_sym1) {
+  dane <- rstable2d(n, alpha, gamma_wagi4, gamma_kierunki4)
+  R_opt <- wybierz_R(dane, gamma_kierunki4, gamma_wagi4)
+  wszystkie_R4 <- c(wszystkie_R4, R_opt)
+}
+R4 <- mean(wszystkie_R4)
+
+cat("Gamma 1:", R1, "\n")
+cat("Gamma 2:", R2, "\n")
+cat("Gamma 3:", R3, "\n")
+cat("Gamma 4:", R4, "\n")
+```
+
+Widzimy, że miara spektralna $\Gamma$ z której pochodzą dane ma wpływ na wybór $R^{*}$, mianowicie dla $\Gamma_{2}$ wartość jest zdecydowanie niższa niż dla $\Gamma_{1}$ oraz $\Gamma_{3}$, pewnie dlatego iż jest to miara symetryczna i równomierna, zatem potrzebujemy mniejszą ilość danych by kierunek danych się wykrystalizował. Nie wspominając o $\Gamma_{4}$, gdzie odpowiednie R, jest bliskie zeru.
